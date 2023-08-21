@@ -1,15 +1,90 @@
+// parser.cpp: 定义应用程序的入口点。
+//
+
 #include "parser.h"
 
-VectorXd equationsResult(map<string, string> equations);
-MatrixXd jacobiansResult(map<string, string> jac);
-VectorXd NRIteration(VectorXd x0, map<string, string> e, map<string, string> jac, int maxIter, double tol);
 double stripString(char* stringIn);
 void printComponents(Component* compPtr);
 void printNodes(Node* nodePtr, int compFlag);
 char* strComponentType(Component* compPtr);
-bool isSpaceOrSemicolon(char c);
-double computeFunction(string& functionStr);
+VectorXd circuitEquations(const VectorXd& x);
+MatrixXd jacobianMatrix(const VectorXd& x);
+VectorXd newtonRaphsonIteration(const VectorXd& x0, int maxIter, double tol);
+bool isSpaceOrSemicolon(char c) {
+    return c == ' ' || c == ';';
+}
+double computeFunction(string& functionStr) {
+    typedef exprtk::symbol_table<double> symbol_table_t;
+    typedef exprtk::expression<double> expression_t;
+    typedef exprtk::parser<double> parser_t;
 
+    symbol_table_t symbol_table;
+    symbol_table.add_constants();
+
+    expression_t expression;
+    expression.register_symbol_table(symbol_table);
+
+    parser_t parser;
+    parser.compile(functionStr, expression);
+
+    return expression.value();
+}
+VectorXd equationsResult(map<string, string> equations) {
+    VectorXd f(equations.size());
+    int num;
+    size_t startPos, endPos;
+    string numStr;
+    for (auto& i : equations) {
+        // 查找数字的起始位置和结束位置
+        startPos = i.first.find('(') + 1;
+        endPos = i.first.find(')');
+        // 提取数字子串
+        numStr = i.first.substr(startPos, endPos - startPos);
+        num = atoi(numStr.c_str());
+        f(num-1) = computeFunction(i.second);
+        //cout << f(num - 1) << endl;
+    }
+
+    return f;
+}
+
+// 定义计算雅可比矩阵(matrixXd类型的纯数字矩阵)的函数
+MatrixXd jacobiansResult(map<string, string> jac) {
+    int ms = sqrt(jac.size()), l, r;
+    string ls, rs;
+    MatrixXd j(ms, ms);
+    size_t startPos, middlePos, endPos;
+    for (auto& i : jac) {
+        // 查找数字的起始位置和结束位置
+        startPos = i.first.find('(') + 1;
+        middlePos = i.first.find(',');
+        endPos = i.first.find(')');
+        // 提取数字子串
+        ls = i.first.substr(startPos, middlePos - startPos);
+        rs = i.first.substr(startPos, endPos - middlePos - 1);
+        l = atoi(ls.c_str());
+        r = atoi(rs.c_str());
+        j(--l, --r) = computeFunction(i.second);
+    }
+    return j;
+}
+VectorXd NRIteration(VectorXd x0, map<string, string> eqt, map<string, string> jac, int maxIter, double tol) {
+    VectorXd x = x0;
+    for (int i = 0; i < maxIter; ++i) {
+        VectorXd F = equationsResult(eqt);
+        MatrixXd J = jacobiansResult(jac);
+
+        VectorXd delta_x = J.colPivHouseholderQr().solve(-F);
+        x += delta_x;
+
+        if (delta_x.norm() < tol) {
+            cout << "Converged in " << i + 1 << " iterations." << endl;
+            return x;
+        }
+    }
+    cout << "Did not converge within the maximum number of iterations." << endl;
+    return x;
+}
 int main()
 {
     ifstream inFile("C:/Users/85todie/source/repos/parser/Netlist.txt");
@@ -28,7 +103,7 @@ int main()
     EquaType eqType = Modified;
 
     if (!inFile.is_open()) {
-        cout << "Failed to open file." << endl;
+        std::cout << "Failed to open file." << std::endl;
         return 1;
     }
 
@@ -222,7 +297,7 @@ int main()
     printNodes(nodePtr, 1);
 
     // output circuit information
-    ofstream outFile("D:/parserout1.txt");
+    ofstream outFile("D:/parserout.txt");
     if (!outFile.is_open()) {
         // 向文件中写入数据
         cout << "Error opening file!" << endl;
@@ -238,16 +313,19 @@ int main()
 
     // create value table
     outFile << endl
-        << "%****************************************************************" << endl
-        << "%                      Component Values:" << endl;
+        << "%****************************************************************" << endl;
+    outFile << "%                      Component Values:" << endl;
     compPtr = compList.getComp(0);
     while (compPtr != NULL) {
         compPtr->printVal(outFile);
         compPtr = compPtr->getNext();
     }
     outFile << endl
-        << "%****************************************************************" << endl
-        << "%                      Circuit Equations: " << endl;
+        << "%****************************************************************" << endl;
+
+
+    // go down the nodal list and have components announce themselves
+    outFile << endl << "%                      Circuit Equations: " << endl;
     nodePtr = nodeList.getNode(0);
     while (nodePtr != NULL) {
         if (nodePtr->getNameNum() != datum) {
@@ -283,8 +361,8 @@ int main()
     }
 
     outFile << endl
-        << "%****************************************************************" << endl
-        << "%                      Jacobians: " << endl;
+        << "%********************************************************************" << endl;
+    outFile << endl << "%                      Jacobians: " << endl;
     nodePtr1 = nodeList.getNode(0);
     while (nodePtr1 != NULL) {   //~> this loop handles the nodes not connected to a Vsource and those ones that are not the 'datum' node
         if (nodePtr1->getNameNum() != datum) {
@@ -337,10 +415,10 @@ int main()
         cerr << "Failed to open file " << endl;
         return 1;
     }
-
-    map<string, double> variables; // 存储变量名及其对应的值
+    // 存储变量名及其对应的值
+    map<string, double> variables; 
     while (getline(inFile1, line)) {
-        if (line.find("Circuit Equations:")!= string::npos) 
+        if (line.find("Circuit Equations:") != string::npos)
             break;
         // 去除变量名和值字符串中的空格与分号
         line.erase(remove_if(line.begin(), line.end(), isSpaceOrSemicolon), line.end());
@@ -350,9 +428,9 @@ int main()
             string variableName = line.substr(0, delimiterPos);
             string valueStr = line.substr(delimiterPos + 1);
             // 处理无穷
-            if (valueStr == "inf") 
+            if (valueStr == "inf")
                 variables[variableName] = numeric_limits<double>::max();
-            else if (valueStr == "-inf") 
+            else if (valueStr == "-inf")
                 variables[variableName] = -numeric_limits<double>::max();//numeric_limits<double>::infinity()
             else {
                 // 将值的字符串转换为double类型
@@ -365,12 +443,12 @@ int main()
                 // 存储变量名及其对应的值
                 variables[variableName] = value;
             }
+
         }
     }
-    
     int sizeGuess;
     string tempGK;
-    int tempP;
+    int count=0;
     double tempGV;
     cout << "input guessSize:" << endl;
     cin >> sizeGuess;
@@ -378,12 +456,14 @@ int main()
     cout << "input guessName and guessValue:" << endl;
     for (int i = 0; i < sizeGuess; ++i) {
         cin >> tempGK;
-        cin >> tempP;
         cin >> tempGV;
         variables[tempGK] = tempGV;
-        init[tempP] = tempGV;
+        init(count++) = tempGV;
     }
-    map<string,string> equations;
+    /*for ( auto& pair : variables) {
+        cout << "Key: " << pair.first << ", Value: " << pair.second << endl;
+    }*/
+    map<string, string> equations;
     while (getline(inFile1, line)) {
         if (line.find("Jacobians:") != string::npos)
             break;
@@ -391,16 +471,17 @@ int main()
         size_t delimiterPos = line.find("=");
         if (delimiterPos != string::npos) {
             string equationName = line.substr(0, delimiterPos);
-            string equantionStr = line.substr(delimiterPos + 1);
+            string equationStr = line.substr(delimiterPos + 1);
             for (auto& i : variables) {
                 size_t pos = 0;
-                while ((pos = equantionStr.find(i.first, pos)) != string::npos) {
-                    equantionStr.replace(pos, i.first.length(), to_string(i.second));
+                while ((pos = equationStr.find(i.first, pos)) != string::npos) {
+                    equationStr.replace(pos, i.first.length(), to_string(i.second));
                     pos += to_string(i.second).length();
                 }
             }
-            equations[equationName] = equantionStr;
-        }   
+            equations[equationName] = equationStr;
+
+        }
     }
     map<string, string> jacobians;
     while (getline(inFile1, line)) {
@@ -417,77 +498,15 @@ int main()
                 }
             }
             jacobians[elementName] = elementStr;
-            cout << elementName << ":" << elementStr << endl;
+
         }
     }
     inFile1.close();
 
-    // 初始猜测值
-   
-    // 调用 N-R 迭代函数求解电路方程
     VectorXd solution = NRIteration(init,equations,jacobians, 100, 1e-6);
     cout << "Solution:" << endl << solution << endl;
 
     return 0;
-}
-
-VectorXd equationsResult(map<string, string> equations){
-    VectorXd f(equations.size());
-    int num;
-    size_t startPos, endPos;
-    string numStr;
-    for (auto& i : equations) {
-        // 查找数字的起始位置和结束位置
-        startPos = i.first.find('(') + 1;
-        endPos = i.first.find(')');
-        // 提取数字子串
-        numStr = i.first.substr(startPos, endPos - startPos);
-        num = atoi(numStr.c_str());
-        f[--num] = computeFunction(i.second);
-    }
-
-    return f;
-}
-
-// 定义计算雅可比矩阵(matrixXd类型的纯数字矩阵)的函数
-MatrixXd jacobiansResult(map<string, string> jac) {
-    int ms = sqrt(jac.size()),l,r;
-    string ls, rs;
-    MatrixXd j(ms, ms);
-    size_t startPos, middlePos,endPos;
-    for (auto& i : jac) {
-        // 查找数字的起始位置和结束位置
-        startPos = i.first.find('(') + 1;
-        middlePos = i.first.find(',');
-        endPos = i.first.find(')');
-        // 提取数字子串
-        ls = i.first.substr(startPos, middlePos - startPos);
-        rs= i.first.substr(startPos, endPos - middlePos-1);
-        l = atoi(ls.c_str());
-        r = atoi(rs.c_str());
-        j[--l,--r] = computeFunction(i.second);
-    }
-    return j;
-}
-
-// 定义 N-R 迭代函数
-VectorXd NRIteration(VectorXd x0,map<string,string> e, map<string, string> jac,int maxIter, double tol) {
-    VectorXd x = x0;
-    for (int i = 0; i < maxIter; ++i) {
-        VectorXd f = equationsResult(e);
-        MatrixXd J = jacobiansResult(jac);
-
-        VectorXd delta_x = J.colPivHouseholderQr().solve(-f);
-        x += delta_x; 
-
-        if (delta_x.norm() < tol) {
-            cout << "Converged in " << i + 1 << " iterations." << endl;
-            return x;
-        }
-    }
-
-    cout << "Did not converge within the maximum number of iterations." << endl;
-    return x;
 }
 
 double stripString(char* stringIn) {
@@ -500,7 +519,7 @@ double stripString(char* stringIn) {
         buf2[b] = buf[a];
     buf2[b] = '\0';
     return atof(buf2);
-}
+};
 
 void printComponents(Component* compPtr) {
     char compTypeName[6];
@@ -563,53 +582,48 @@ char* strComponentType(Component* compPtr) {
     return compTypeName;
 }
 
-bool isSpaceOrSemicolon(char c) {
-    return c == ' ' || c == ';';
+VectorXd circuitEquations(const VectorXd& x) {
+    double x1 = x(0);
+    double x2 = x(1);
+
+    VectorXd f(2);
+    f(0) = x1 + x2 * x2 - 4;
+    f(1) = exp(x1) - x2 - 1;
+
+    return f;
 }
-double computeFunction(string& functionStr) {
-    typedef exprtk::symbol_table<double> symbol_table_t;
-    typedef exprtk::expression<double> expression_t;
-    typedef exprtk::parser<double> parser_t;
 
-    symbol_table_t symbol_table;
-    symbol_table.add_constants();
+// 定义计算雅可比矩阵的函数
+MatrixXd jacobianMatrix(const VectorXd& x) {
+    double x1 = x(0);
+    double x2 = x(1);
 
-    expression_t expression;
-    expression.register_symbol_table(symbol_table);
+    MatrixXd J(2, 2);
+    J(0, 0) = 1;
+    J(0, 1) = 2 * x2;
+    J(1, 0) = exp(x1);
+    J(1, 1) = -1;
 
-    parser_t parser;
-    parser.compile(functionStr, expression);
-
-    return expression.value();
+    return J;
 }
-//double computeFunction(string& functionStr, map<string, double>& variableMap) {
-//    typedef exprtk::symbol_table<double> symbol_table_t;
-//    typedef exprtk::expression<double> expression_t;
-//    typedef exprtk::parser<double> parser_t;
-//
-//    // 创建符号表和解析器
-//    symbol_table_t symbolTable;
-//    expression_t expression;
-//    parser_t parser;
-//
-//    // 替换表达式中的无穷
-//    string inf = to_string(numeric_limits<double>::max());
-//    size_t pos = functionStr.find("inf");
-//    while (pos != string::npos) {
-//        functionStr.replace(pos, 4, inf);
-//        pos = functionStr.find("inf", pos + inf.length());
-//    }
-//    // 添加变量到符号表
-//    for (auto& i : variableMap) {
-//        symbolTable.add_variable(i.first, i.second);
-//    }
-//
-//    // 编译表达式
-//    expression.register_symbol_table(symbolTable);
-//    parser.compile(functionStr, expression);
-//
-//
-//    // 计算结果
-//    return expression.value();
-//
-//}
+
+// 定义 N-R 迭代函数
+VectorXd newtonRaphsonIteration(const VectorXd& x0, int maxIter, double tol) {
+    VectorXd x = x0;
+
+    for (int i = 0; i < maxIter; ++i) {
+        VectorXd f = circuitEquations(x);
+        MatrixXd J = jacobianMatrix(x);
+
+        VectorXd delta_x = J.colPivHouseholderQr().solve(-f);
+        x += delta_x;
+
+        if (delta_x.norm() < tol) {
+            std::cout << "Converged in " << i + 1 << " iterations." << std::endl;
+            return x;
+        }
+    }
+
+    std::cout << "Did not converge within the maximum number of iterations." << std::endl;
+    return x;
+}

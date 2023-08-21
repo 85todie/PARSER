@@ -23,7 +23,7 @@ enum CompType {
 };
 enum TranType { NMOS, PMOS, NPN, PNP };
 enum Flag { UNSET, SET };
-enum Boolean { FALSE, TRUE };
+enum BooleanValue { fal, tru };
 enum EquaType { Nodal, Modified };
 int mCount = 0, bCount = 0, vSCount = 0, iSCount = 0, rCount = 0, iCount = 0, dCount = 0, cCount = 0;
 const int NameLength = 80, BufLength = 300, NA = -1;
@@ -62,7 +62,7 @@ public:
 	void setNext(Component* nextIn);
 	void setNum(int numIn);
 	int getConVal(int conNum);
-	Boolean isCon(int conNum);
+	BooleanValue isCon(int conNum);
 	void print(int nodeNum, ofstream& outFile, int datum, int lastnode);
 	void specialPrint(ofstream& outFile, int datum);
 	void specialPrintJac(ofstream& outFile, int datum, Node* wrt/**/, int lastnode, EquaType eqType, Component* compPtr2, int* specPrintJacMNA /**/);
@@ -251,16 +251,16 @@ int Component::getConVal(int conNum) {
 	return rtVal;
 }
 
-Boolean Component::isCon(int conNum) {
-	Boolean rtVal;
+BooleanValue Component::isCon(int conNum) {
+	BooleanValue rtVal;
 	if (conNum == 0)
-		rtVal = (con0.flag == SET) ? TRUE : FALSE;
+		rtVal = (con0.flag == SET) ? tru : fal;
 	if (conNum == 1)
-		rtVal = (con1.flag == SET) ? TRUE : FALSE;
+		rtVal = (con1.flag == SET) ? tru : fal;
 	if (conNum == 2)
-		rtVal = (con2.flag == SET) ? TRUE : FALSE;
+		rtVal = (con2.flag == SET) ? tru : fal;
 	if (conNum == 3)
-		rtVal = (con3.flag == SET) ? TRUE : FALSE;
+		rtVal = (con3.flag == SET) ? tru : fal;
 	return rtVal;
 }
 
@@ -1027,11 +1027,11 @@ void Component::printJac(int nodeNum, ofstream& outFile, int datum, int wrt, boo
 
 		//           NOTE:  Assuming DC voltages, the derivatives are all zero
 	case VSource:
-		if (((con0.node->getNum() == nodeNum) && (con0.node->getNameNum() == wrt) /*~>*/ && (MNAflag == FALSE)) ||
-			((con1.node->getNum() == nodeNum) && (con1.node->getNameNum() == wrt) /*~>*/ && (MNAflag == FALSE)))
+		if (((con0.node->getNum() == nodeNum) && (con0.node->getNameNum() == wrt) /*~>*/ && (MNAflag == fal)) ||
+			((con1.node->getNum() == nodeNum) && (con1.node->getNameNum() == wrt) /*~>*/ && (MNAflag == fal)))
 			outFile << " 1 ";
-		else if (((con0.node->getNum() == nodeNum) && (con1.node->getNameNum() == wrt) /*~>*/ && (MNAflag == FALSE)) ||
-			((con1.node->getNum() == nodeNum) && (con0.node->getNameNum() == wrt) /*~>*/ && (MNAflag == FALSE)))
+		else if (((con0.node->getNum() == nodeNum) && (con1.node->getNameNum() == wrt) /*~>*/ && (MNAflag == fal)) ||
+			((con1.node->getNum() == nodeNum) && (con0.node->getNameNum() == wrt) /*~>*/ && (MNAflag == fal)))
 			outFile << " (-1)";
 		else
 			outFile << " 0 ";
@@ -1260,11 +1260,11 @@ void Node::printJac(ofstream& outFile, int datum, Node* wrt, int lastnode,
 	outFile << endl << "JAC(" << nameNum << ", " << wrt->getNameNum() << ") = ";
 	conPtr = conList;
 	while (conPtr->next != NULL) {
-		conPtr->comp->printJac(nodeNum, outFile, datum, wrt->getNameNum(), FALSE);
+		conPtr->comp->printJac(nodeNum, outFile, datum, wrt->getNameNum(), fal);
 		outFile << "+";
 		conPtr = conPtr->next;
 	}
-	conPtr->comp->printJac(nodeNum, outFile, datum, wrt->getNameNum(), FALSE);
+	conPtr->comp->printJac(nodeNum, outFile, datum, wrt->getNameNum(), fal);
 	outFile << ';' << endl;
 	if (eqType == Modified) {
 		conPtr = wrt->conList;
@@ -1284,8 +1284,8 @@ void Node::printJacMNA(ofstream& outFile, int datum, Node* wrt, int lastnode) {
 	Connections* conPtr;
 	int print, val;
 	/* ~>*/
-	bool MNAflagFALSE = FALSE; //Used to indicate if it is been printed JacMNA
-	bool MNAflagTRUE = TRUE;
+	bool MNAflagFALSE = fal; //Used to indicate if it is been printed JacMNA
+	bool MNAflagTRUE = tru;
 	/* <~*/
 	print = 0;
 	conPtr = conList;
