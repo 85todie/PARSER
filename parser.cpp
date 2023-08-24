@@ -7,29 +7,39 @@ double stripString(char* stringIn);
 void printComponents(Component* compPtr);
 void printNodes(Node* nodePtr, int compFlag);
 char* strComponentType(Component* compPtr);
-VectorXd circuitEquations(const VectorXd& x);
-MatrixXd jacobianMatrix(const VectorXd& x);
-VectorXd newtonRaphsonIteration(const VectorXd& x0, int maxIter, double tol);
+
 bool isSpaceOrSemicolon(char c) {
     return c == ' ' || c == ';';
 }
-double computeFunction(string& functionStr) {
+
+double exp_(double x) {
+    if (isinf(exp(x)))
+        return numeric_limits<double>::max();  // 返回 double 类型的最大值
+    else
+        return exp(x);
+}
+
+double computeFunction(string& functionStr, VectorXd x) {
+    for (int i = 0; i < x.size(); i++) {
+        size_t pos = 0;
+        while ((pos = functionStr.find("X(" + to_string(i + 1) + ")", pos)) != string::npos) {
+            functionStr.replace(pos, 4, to_string(x(i)));
+            pos += 4;
+        }
+    }
     typedef exprtk::symbol_table<double> symbol_table_t;
     typedef exprtk::expression<double> expression_t;
     typedef exprtk::parser<double> parser_t;
-
     symbol_table_t symbol_table;
-    symbol_table.add_constants();
-
+    symbol_table.add_function("exp_", exp_);
     expression_t expression;
     expression.register_symbol_table(symbol_table);
-
     parser_t parser;
     parser.compile(functionStr, expression);
-
     return expression.value();
 }
-VectorXd equationsResult(map<string, string> equations) {
+
+VectorXd equationsResult(map<string, string> equations, VectorXd x) {
     VectorXd f(equations.size());
     int num;
     size_t startPos, endPos;
@@ -41,15 +51,16 @@ VectorXd equationsResult(map<string, string> equations) {
         // 提取数字子串
         numStr = i.first.substr(startPos, endPos - startPos);
         num = atoi(numStr.c_str());
-        f(num-1) = computeFunction(i.second);
+        //cout << "f" << num-1<<":" << i.second << endl;
+        f(num-1) = computeFunction(i.second,x);
         //cout << f(num - 1) << endl;
     }
-
+    
     return f;
 }
 
 // 定义计算雅可比矩阵(matrixXd类型的纯数字矩阵)的函数
-MatrixXd jacobiansResult(map<string, string> jac) {
+MatrixXd jacobiansResult(map<string, string> jac, VectorXd x) {
     int ms = sqrt(jac.size()), l, r;
     string ls, rs;
     MatrixXd j(ms, ms);
@@ -64,21 +75,27 @@ MatrixXd jacobiansResult(map<string, string> jac) {
         rs = i.first.substr(startPos, endPos - middlePos - 1);
         l = atoi(ls.c_str());
         r = atoi(rs.c_str());
-        j(--l, --r) = computeFunction(i.second);
+        //cout << l << "," << r << ":" << i.second << endl;
+        j(--l, --r) = computeFunction(i.second,x);
     }
+    
     return j;
 }
 VectorXd NRIteration(VectorXd x0, map<string, string> eqt, map<string, string> jac, int maxIter, double tol) {
     VectorXd x = x0;
-    for (int i = 0; i < maxIter; ++i) {
-        VectorXd F = equationsResult(eqt);
-        MatrixXd J = jacobiansResult(jac);
-
-        VectorXd delta_x = J.colPivHouseholderQr().solve(-F);
+    VectorXd F ;
+    MatrixXd J ;
+    //PartialPivLU<MatrixXd> lu(J);  //列主元Householder LU分解
+    //VectorXd delta_x = lu.solve(-F);  //求解线性方程组
+    VectorXd delta_x ;
+    for (int i = 1; i < maxIter; ++i) {
+        F = equationsResult(eqt, x);
+        J = jacobiansResult(jac, x);
+        //cout << "f第" <<i<<"次：" <<endl << F << endl;
+        delta_x = J.colPivHouseholderQr().solve(-F);
         x += delta_x;
-
         if (delta_x.norm() < tol) {
-            cout << "Converged in " << i + 1 << " iterations." << endl;
+            cout << "Converged in " << i << " iterations." << endl;
             return x;
         }
     }
@@ -430,8 +447,6 @@ int main()
             // 处理无穷
             if (valueStr == "inf")
                 variables[variableName] = numeric_limits<double>::max();
-            else if (valueStr == "-inf")
-                variables[variableName] = -numeric_limits<double>::max();//numeric_limits<double>::infinity()
             else {
                 // 将值的字符串转换为double类型
                 double value;
@@ -440,13 +455,11 @@ int main()
                     cerr << "Failed to parse value: " << valueStr << endl;
                     continue;  // 跳过无法解析行
                 }
-                // 存储变量名及其对应的值
                 variables[variableName] = value;
             }
-
         }
     }
-    int sizeGuess;
+    /*int sizeGuess;
     string tempGK;
     int count=0;
     double tempGV;
@@ -459,10 +472,8 @@ int main()
         cin >> tempGV;
         variables[tempGK] = tempGV;
         init(count++) = tempGV;
-    }
-    /*for ( auto& pair : variables) {
-        cout << "Key: " << pair.first << ", Value: " << pair.second << endl;
     }*/
+    
     map<string, string> equations;
     while (getline(inFile1, line)) {
         if (line.find("Jacobians:") != string::npos)
@@ -478,6 +489,11 @@ int main()
                     equationStr.replace(pos, i.first.length(), to_string(i.second));
                     pos += to_string(i.second).length();
                 }
+            }
+            size_t pos1 = 0;
+            while ((pos1 = equationStr.find("exp", pos1)) != string::npos) {
+                equationStr.replace(pos1, 3, "exp_");
+                pos1 += 4;
             }
             equations[equationName] = equationStr;
 
@@ -497,17 +513,50 @@ int main()
                     pos += to_string(i.second).length();
                 }
             }
+            size_t pos1 = 0;
+            while ((pos1 = elementStr.find("exp", pos1)) != string::npos) {
+                elementStr.replace(pos1, 3, "exp_");
+                pos1 += 4;
+            }
             jacobians[elementName] = elementStr;
-
         }
     }
     inFile1.close();
 
-    VectorXd solution = NRIteration(init,equations,jacobians, 100, 1e-6);
+    VectorXd init(8);
+    init << 1.7690, 0.6918, 7.2381, 1.4899, 1.5000, 10.000, -0.0069, 0.0000;
+    VectorXd solution = NRIteration(init,equations,jacobians, 100, 1e-60);
     cout << "Solution:" << endl << solution << endl;
 
     return 0;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 double stripString(char* stringIn) {
     char buf[BufLength], buf2[BufLength];
@@ -582,48 +631,3 @@ char* strComponentType(Component* compPtr) {
     return compTypeName;
 }
 
-VectorXd circuitEquations(const VectorXd& x) {
-    double x1 = x(0);
-    double x2 = x(1);
-
-    VectorXd f(2);
-    f(0) = x1 + x2 * x2 - 4;
-    f(1) = exp(x1) - x2 - 1;
-
-    return f;
-}
-
-// 定义计算雅可比矩阵的函数
-MatrixXd jacobianMatrix(const VectorXd& x) {
-    double x1 = x(0);
-    double x2 = x(1);
-
-    MatrixXd J(2, 2);
-    J(0, 0) = 1;
-    J(0, 1) = 2 * x2;
-    J(1, 0) = exp(x1);
-    J(1, 1) = -1;
-
-    return J;
-}
-
-// 定义 N-R 迭代函数
-VectorXd newtonRaphsonIteration(const VectorXd& x0, int maxIter, double tol) {
-    VectorXd x = x0;
-
-    for (int i = 0; i < maxIter; ++i) {
-        VectorXd f = circuitEquations(x);
-        MatrixXd J = jacobianMatrix(x);
-
-        VectorXd delta_x = J.colPivHouseholderQr().solve(-f);
-        x += delta_x;
-
-        if (delta_x.norm() < tol) {
-            std::cout << "Converged in " << i + 1 << " iterations." << std::endl;
-            return x;
-        }
-    }
-
-    std::cout << "Did not converge within the maximum number of iterations." << std::endl;
-    return x;
-}
