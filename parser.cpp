@@ -236,7 +236,6 @@ int main(){
     outFile << endl
         << "%****************************************************************" << endl;
 
-
     // go down the nodal list and have components announce themselves
     outFile << endl << "%                      Circuit Equations: " << endl;
     nodePtr = nodeList.getNode(0);
@@ -246,14 +245,12 @@ int main(){
         }
         nodePtr = nodePtr->getNext();
     }
-
     //go down the component list and give equations for all sources
     compPtr = compList.getComp(0);
     while (compPtr != NULL) {
         compPtr->specialPrint(outFile, datum);
         compPtr = compPtr->getNext();
     }
-
     //~> go down the component list and give supernode equations for all float sources (Nodal Analysis)
     if (eqType != Modified) {
         compPtr = compList.getComp(0);
@@ -262,7 +259,6 @@ int main(){
             compPtr = compPtr->getNext();
         }
     }
-
     // go down the node list and give additional MNA equations
     if (eqType == Modified) {
         nodePtr = nodeList.getNode(0);
@@ -289,7 +285,6 @@ int main(){
         }
         nodePtr1 = nodePtr1->getNext();
     }
-
     // go down the component list and give equations for all sources
     compPtr = compList.getComp(0);
     while (compPtr != NULL) {
@@ -304,7 +299,6 @@ int main(){
         specPrintJacMNA = 0;
         compPtr = compPtr->getNext();
     }
-
     // print the Jacobians for the additional MNA equations
     if (eqType == Modified) {
         nodePtr1 = nodeList.getNode(0);
@@ -322,6 +316,7 @@ int main(){
     }
     outFile.close();
 
+
     ifstream inFile1("D:/case1out.txt");
     string line;
     if (!inFile1) {
@@ -335,7 +330,6 @@ int main(){
             break;
         // 去除变量名和值字符串中的空格与分号
         line.erase(remove_if(line.begin(), line.end(), isSpaceOrSemicolon), line.end());
-        // 解析每一行，假设格式为"variableName = value"
         size_t delimiterPos = line.find("=");
         if (delimiterPos != string::npos) {
             string variableName = line.substr(0, delimiterPos);
@@ -347,7 +341,6 @@ int main(){
                 variables[variableName] = valueStr;
         }
     }
-
     map<string, string> equations;
     while (getline(inFile1, line)) {
         if (line.find("Jacobians:") != string::npos)
@@ -395,115 +388,15 @@ int main(){
             jacobians[elementName] = elementStr;
         }
     }
-    //while (getline(inFile1, line)) {
-    //    if (line.find("Circuit Equations:") != string::npos)
-    //        break;
-    //    // 去除变量名和值字符串中的空格与分号
-    //    line.erase(remove_if(line.begin(), line.end(), isSpaceOrSemicolon), line.end());
-    //    // 解析每一行，假设格式为"variableName = value"
-    //    size_t delimiterPos = line.find("=");
-    //    if (delimiterPos != string::npos) {
-    //        string variableName = line.substr(0, delimiterPos);
-    //        string valueStr = line.substr(delimiterPos + 1);
-    //        // 处理无穷
-    //        if (valueStr == "inf")
-    //            variables[variableName] = numeric_limits<double>::max();
-    //        else {
-    //            // 将值的字符串转换为double类型
-    //            double value;
-    //            istringstream iss(valueStr);
-    //            if (!(iss >> value)) {
-    //                cerr << "Failed to parse value: " << valueStr << endl;
-    //                continue;  // 跳过无法解析行
-    //            }
-    //            variables[variableName] = value;
-    //        }
-    //    }
-    //} 
-    /*int sizeGuess;
-    string tempGK;
-    int count=0;
-    double tempGV;
-    cout << "input guessSize:" << endl;
-    cin >> sizeGuess;
-    VectorXd init(sizeGuess);
-    cout << "input guessName and guessValue:" << endl;
-    for (int i = 0; i < sizeGuess; ++i) {
-        cin >> tempGK;
-        cin >> tempGV; 
-        variables[tempGK] = tempGV;
-        init(count++) = tempGV;
-    }*/
-    
-    //map<string, string> equations;
-    //while (getline(inFile1, line)) {
-    //    if (line.find("Jacobians:") != string::npos)
-    //        break;
-    //    line.erase(remove_if(line.begin(), line.end(), isSpaceOrSemicolon), line.end());
-    //    size_t delimiterPos = line.find("=");
-    //    if (delimiterPos != string::npos) {
-    //        string equationName = line.substr(0, delimiterPos);
-    //        string equationStr = line.substr(delimiterPos + 1);
-    //        for (auto& i : variables) {
-    //            size_t pos = 0;
-    //            /*ostringstream oss;
-    //            oss.str("");
-    //            oss << i.second;
-    //            string ts = oss.str();
-    //            cout << "我" << ts << endl;*/
-    //            while ((pos = equationStr.find(i.first, pos)) != string::npos) {
-    //                equationStr.replace(pos, i.first.length(), doubleToString(i.second,30));
-    //                pos += to_string(i.second).length();
-    //            }
-    //        }
-    //        size_t pos1 = 0;
-    //        while ((pos1 = equationStr.find("exp", pos1)) != string::npos) {
-    //            equationStr.replace(pos1, 3, "exp_");
-    //            pos1 += 4;
-    //        }
-    //        equations[equationName] = equationStr;
-    //        
-    //    }
-    //}
-    /*cout << equations["F(1)"] << endl;
-    cout << equations["F(2)"] << endl;
-    cout << equations["F(3)"] << endl;
-    cout << equations["F(4)"] << endl;
-    cout << equations["F(5)"] << endl;
-    cout << equations["F(6)"] << endl;
-    cout << equations["F(7)"] << endl;
-    cout << equations["F(8)"] << endl;*/
-    /*map<string, string> jacobians;
-    while (getline(inFile1, line)) {
-        line.erase(remove_if(line.begin(), line.end(), isSpaceOrSemicolon), line.end());
-        size_t delimiterPos = line.find("=");
-        if (delimiterPos != string::npos) {
-            string elementName = line.substr(0, delimiterPos);
-            string elementStr = line.substr(delimiterPos + 1);
-            for (auto& i : variables) {
-                size_t pos = 0;
-                while ((pos = elementStr.find(i.first, pos)) != string::npos) {
-                    elementStr.replace(pos, i.first.length(), doubleToString(i.second, 30));
-                    pos += to_string(i.second).length();
-                }
-            }
-            size_t pos1 = 0;
-            while ((pos1 = elementStr.find("exp", pos1)) != string::npos) {
-                elementStr.replace(pos1, 3, "exp_");
-                pos1 += 4;
-            }
-            jacobians[elementName] = elementStr;
-        }
-    }*/
     inFile1.close();
 
     VectorXd init(8);
-    //init << 0, 0, 0, 0, 0, 0, 0, 0;//nr不行homo可以
+    init << 0, 0, 0, 0, 0, 0, 0, 0;//nr不行homo可以
     //init << 100, 100, 100, 100, 100, 100, 100, 100;//nr不行homo可以
-    init << 0.7 ,0.6 ,10 ,0.7 ,1.5 ,10, 0, 0;//nr和homo都可以
-    VectorXd solution1 = NRIteration(init, equations, jacobians, 1e-3, 100);
+    //init << 0.7 ,0.6 ,10 ,0.7 ,1.5 ,10, 0, 0;//nr和homo都可以
+    //VectorXd solution1 = NRIteration(init, equations, jacobians, 1e-3, 100);
     VectorXd solution2 = HMIteration(init, equations, jacobians, 1e-3, 0.01);
-    cout << "Solution N-R:" << endl << solution1 << endl;
+    //cout << "Solution N-R:" << endl << solution1 << endl;
     cout << "Solution Homotopy:" << endl << solution2 << endl;
     //cout << "Solution TranCc4:" << endl;
     //TranCc4(0.001, 0.04);

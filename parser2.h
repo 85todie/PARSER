@@ -1,11 +1,23 @@
 #pragma once
 #include "parser1.h"
+double computeFunction(string& functionStr, VectorXd x);
+VectorXd equationsResult(map<string, string> equations, VectorXd x);
+MatrixXd jacobiansResult(map<string, string> jac, VectorXd x);
+VectorXd NRIteration(VectorXd x0, map<string, string> eqt, map<string, string> jac, double tol, int maxIter);
+VectorXd HMIteration(VectorXd x0, map<string, string> eqt, map<string, string> jac, double tol, double step);
+double exp_(double x);
+bool isSpaceOrSemicolon(char c);
+bool isAccurate(VectorXd result, double acc);
+char* strComponentType(Component* compPtr);
+void printComponents(Component* compPtr);
+double stripString(char* stringIn);
+void printNodes(Node* nodePtr, int compFlag);
 
-string doubleToString(double number, int precision) {
-    stringstream ss;
-    ss << fixed << setprecision(precision) << number;
-    return ss.str();
-}
+//string doubleToString(double number, int precision) {
+//    stringstream ss;
+//    ss << fixed << setprecision(precision) << number;
+//    return ss.str();
+//}
 
 bool isAccurate(VectorXd result, double acc) {
     bool jug = true;
@@ -113,30 +125,33 @@ VectorXd NRIteration(VectorXd x0, map<string, string> eqt, map<string, string> j
     return x;
 }
 VectorXd HMIteration(VectorXd x0, map<string, string> eqt, map<string, string> jac, double tol, double step) {
+    int xs = x0.size();
     VectorXd x = x0;
     VectorXd F;
     MatrixXd J;
     VectorXd delta_x;
-    VectorXd a(x.size());
-    //a << 0.5000, 0.4799, 0.9047, 0.6099, 0.6177, 0.8594, 0.8055, 0.5767;
-    //a << 1, 1, 1, 1, 1, 1, 1, 1;
-    a << 0, 0, 0, 0, 0, 0, 0, 0;
+    VectorXd a(xs);
+    //a << 0, 0, 0, 0, 0, 0, 0, 0;//solution1
+    a << 10, 10, 10, 10, 10, 10, 10, 10;//solution3
     double lambda = 0;
     VectorXd sol;
-    int xs = x.size();
     MatrixXd G(xs, xs);
     for (int i = 0; i < xs; i++) {
         for (int j = 0; j < xs; j++)
             G(i, j) = (i == j ? 1e-3 : 0);
     }
-    int count = 1;
-    for (; lambda <= 1.2; ++count) {
-
-        F = lambda * equationsResult(eqt, x) + (1 - lambda) * G * (x - a);
-        J = lambda*jacobiansResult(jac, x) + (1-lambda) * G;
-        delta_x = J.colPivHouseholderQr().solve(-F);
-        x += delta_x;
-
+    int count;
+    for (; lambda <= 1; ++count) {
+        count = 0;
+        while (count++<20) {
+            F = lambda * equationsResult(eqt, x) + (1 - lambda) * G * (x - a);
+            J = lambda * jacobiansResult(jac, x) + (1 - lambda) * G;
+            delta_x = J.colPivHouseholderQr().solve(-F);
+            x += delta_x;
+            if (delta_x.norm() < tol) 
+                break;
+        }
+        cout << "lambda: " << lambda << " NRcount: " << count << endl;
         if (lambda >= 0.99 && lambda <= 1.00) 
             sol = x;
         lambda += step;
