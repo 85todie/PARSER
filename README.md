@@ -1,4 +1,2 @@
 # PARSER
-vs22
-  1 实现nr
-  2 实现homtopy
+vs22  实现nr  实现homtopy
