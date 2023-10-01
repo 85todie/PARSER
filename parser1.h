@@ -1,6 +1,5 @@
 #pragma once
 #pragma warning(disable:4996)
-
 #include <iostream>
 #include <sstream>
 #include <iomanip>
@@ -11,24 +10,19 @@
 #include <string>
 #include <cmath>
 #include <exprtk.hpp>
-#include "D:\eigen-3.4.0\eigen-3.4.0\Eigen\Eigen"
-
-
+#include "D:\Eigen\Eigen"
 using namespace std;
 using namespace Eigen;
 
-//  declarations:
+//declarations:
 const double K = 1.38E-23;
 const double Q = 1.60E-19;
-enum CompType {
-	MOSFET, BJT, VSource, ISource, Inductor,
-	Resistor, Diode, Capacitor
-};
+enum CompType { MOSFET, BJT, VSource, ISource, Inductor,Resistor, Diode, Capacitor};
 enum TranType { NMOS, PMOS, NPN, PNP };
 enum Flag { UNSET, SET };
 enum BooleanValue { fal, tru };
 enum EquaType { Nodal, Modified };
-int mCount = 0, bCount = 0, vSCount = 0, iSCount = 0, rCount = 0, iCount = 0, dCount = 0, cCount = 0;
+//int mCount = 0, bCount = 0, vSCount = 0, iSCount = 0, rCount = 0, iCount = 0, dCount = 0, cCount = 0;
 const int NameLength = 80, BufLength = 300, NA = -1;
 
 class Component;
@@ -66,14 +60,12 @@ public:
 	void setNum(int numIn);
 	int getConVal(int conNum);
 	BooleanValue isCon(int conNum);
-	void print(int nodeNum, ofstream& outFile, int datum, int lastnode);
+	void print(int nodeNum, ofstream& outFile, int datum, int lastnode,int atf);//atf:dc0 tran1
 	void specialPrint(ofstream& outFile, int datum);
+	void printJac(int nodeNum, ofstream& outFile, int datum, int wrt, bool MNAflag,int atf);
 	void specialPrintJac(ofstream& outFile, int datum, Node* wrt/**/, int lastnode, EquaType eqType, Component* compPtr2, int* specPrintJacMNA /**/);
 	void printVal(ofstream& outFile);
-	void printJac(int nodeNum, ofstream& outFile, int datum, int wrt, bool MNAflag);
-	/*~> function to print the super node equation (for Nodal equation) */
-	void printSuperNode(ofstream& outFile, int datum, int lastnode);
-	/* */
+	void printSuperNode(ofstream& outFile, int datum, int lastnode, int atf);
 	Node* getNode(int conNum);
 	int getNodeNum(int conNum);
 	char* getName();
@@ -81,7 +73,7 @@ private:
 	Component* next;
 	CompType type;
 	Connectors con0, con1, con2, con3;
-	int compNum;
+	int compNum;//该类元器的第几个，由addcomp；setnum设置
 	double value, temp;
 	Model* model;
 	char name[NameLength];
@@ -98,14 +90,13 @@ public:
 	Connections* getConList();
 	void connect(int conNumIn, Component* compIn);
 	Node* getNext();
-	void printNodal(ofstream& outFile, int datum, int lastnode);
-	void printMNA(ofstream& outFile, int datum, int lastnode);
-	void printJac(ofstream& outFile, int datum, Node* wrt, int lastnode,
-		EquaType eqType);
-	void printJacMNA(ofstream& outFile, int datum, Node* wrt, int lastnode);
+	void printNodal(ofstream& outFile, int datum, int lastnode, int atf);
+	void printMNA(ofstream& outFile, int datum, int lastnode, int atf);
+	void printJac(ofstream& outFile, int datum, Node* wrt, int lastnode,EquaType eqType,int atf);
+	void printJacMNA(ofstream& outFile, int datum, Node* wrt, int lastnode,int atf);
 	void setNext(Node* nodeIn);
 	/*~>function to print the super node equation (for Nodal equation)*/
-	void printSuperNodal(ofstream& outFile, int datum, int lastnode);
+	void printSuperNodal(ofstream& outFile, int datum, int lastnode, int atf);
 	/* */
 
 private:
@@ -134,9 +125,11 @@ public:
 	void addComp(Component* component);
 	int getCount(CompType type);
 	Component* getComp(int compNum);
+	int getCompCon(char a,int compNum,int con);
 private:
 	Component* compList;
-	int sCount, rCount, tCount, dCount, cCount;
+	//int sCount, rCount, tCount, dCount, cCount;
+	int rCount, dCount, cCount,iSCount,vSCount,mCount, bCount, iCount;
 };
 
 class Model {
@@ -267,8 +260,7 @@ BooleanValue Component::isCon(int conNum) {
 	return rtVal;
 }
 
-void Component::print(int nodeNum, ofstream& outFile, int datum, int
-	lastnode) {
+void Component::print(int nodeNum, ofstream& outFile, int datum, int lastnode,int atf) {
 	switch (type) {
 	case MOSFET:
 		outFile << name
@@ -494,7 +486,26 @@ void Component::print(int nodeNum, ofstream& outFile, int datum, int
 		break;
 
 	case Capacitor:
-		outFile << " 0 ";
+		if (atf== 0) outFile << " 0 ";
+		if (atf == 1) {
+			if (con0.node->getNum() == nodeNum) {
+				outFile << name << "/h" << "*(";
+				if (con0.node->getNameNum() != datum)
+					outFile << "X(" << con0.node->getNameNum() << ')';
+				if (con1.node->getNameNum() != datum)
+					outFile << "-X(" << con1.node->getNameNum() << ')';
+				outFile<<"-clv"<<name[3] << ") ";
+			}
+			if (con1.node->getNum() == nodeNum) {
+				outFile << name << "/h" << "*(";
+				if (con1.node->getNameNum() != datum)
+					outFile << "X(" << con1.node->getNameNum() << ')';
+				if (con0.node->getNameNum() != datum)
+					outFile << "-X(" << con0.node->getNameNum() << ')';
+				outFile << "+clv" << name[3] << ") ";
+			}
+		}
+		
 		break;
 
 	case Inductor:
@@ -598,7 +609,7 @@ void Component::printVal(ofstream& outFile) {
 }
 
 //   	wrt = With Respect To
-void Component::printJac(int nodeNum, ofstream& outFile, int datum, int wrt, bool MNAflag) {
+void Component::printJac(int nodeNum, ofstream& outFile, int datum, int wrt, bool MNAflag,int atf) {
 	//~> MNAflag says if the type of analysis is MNA or NA
 	switch (type) {
 	case MOSFET:
@@ -1080,7 +1091,17 @@ void Component::printJac(int nodeNum, ofstream& outFile, int datum, int wrt, boo
 		break;
 
 	case Capacitor:
-		outFile << " 0 ";
+		if(atf==0) outFile << " 0 ";
+		if (atf == 1) {
+			if (((con0.node->getNum() == nodeNum) && (con0.node->getNameNum() == wrt)) ||
+				((con1.node->getNum() == nodeNum) && (con1.node->getNameNum() == wrt)))
+				outFile <<name<< " /h ";
+			else if (((con0.node->getNum() == nodeNum) && (con1.node->getNameNum() == wrt)) ||
+				((con1.node->getNum() == nodeNum) && (con0.node->getNameNum() == wrt)))
+				outFile << " (-" << name<< "/h) ";
+			else
+				outFile << " 0 ";
+		}
 		break;
 
 	case Inductor:
@@ -1092,19 +1113,16 @@ void Component::printJac(int nodeNum, ofstream& outFile, int datum, int wrt, boo
 	return;
 }
 /* ~> */
-void Component::printSuperNode(ofstream& outFile, int datum, int lastnode) {
+void Component::printSuperNode(ofstream& outFile, int datum, int lastnode, int atf) {
 	if (type == VSource) {
 		if ((con0.node->getNameNum() != datum) && (con1.node->getNameNum() != datum))
 		{ //~> if is a floating source
 			outFile << endl << "F(" << con1.node->getNameNum() << ") = ";
 			outFile << "(";
-			con0.node->printSuperNodal(outFile, datum, lastnode);
-			outFile << ") ";
-			outFile << '+';
-			outFile << " (";
-			con1.node->printSuperNodal(outFile, datum, lastnode);
-			outFile << ")";
-			outFile << ';' << endl;
+			con0.node->printSuperNodal(outFile, datum, lastnode,atf);
+			outFile << ") "<< '+'<< " (";
+			con1.node->printSuperNodal(outFile, datum, lastnode,atf);
+			outFile << ")" << ';' << endl;
 		}
 	}
 	return;
@@ -1200,7 +1218,7 @@ void Node::setNext(Node* nodeIn) {
 	next = nodeIn;
 }
 
-void Node::printNodal(ofstream& outFile, int datum, int lastnode) {
+void Node::printNodal(ofstream& outFile, int datum, int lastnode,int atf) {
 	Connections* conPtr;
 	conPtr = conList;
 	while (conPtr != NULL) { // ~> checks if some 'connection' is connected to any Voltage source. If there is no connections with Voltages source, print the equations.
@@ -1211,19 +1229,18 @@ void Node::printNodal(ofstream& outFile, int datum, int lastnode) {
 	outFile << endl << "F(" << nameNum << ") = ";
 	conPtr = conList;
 	while (conPtr->next != NULL) { //~> Using 'conPtr->next' not conPtr to check the end of the while loop
-		conPtr->comp->print(nodeNum, outFile, datum, lastnode);
+		conPtr->comp->print(nodeNum, outFile, datum, lastnode,atf);
 		outFile << '+';
 		conPtr = conPtr->next;
 	}
-	conPtr->comp->print(nodeNum, outFile, datum, lastnode);
+	conPtr->comp->print(nodeNum, outFile, datum, lastnode,atf);
 	outFile << ';' << endl;
 	return;
 }
 
-void Node::printMNA(ofstream& outFile, int datum, int lastnode) {
+void Node::printMNA(ofstream& outFile, int datum, int lastnode,int atf) {
 	Connections* conPtr;
-	int print;
-	print = 0;
+	int print= 0;
 	conPtr = conList;
 	while (conPtr != NULL) {
 		if (conPtr->comp->getType() == VSource) {  //~> seeking for a VSource
@@ -1236,40 +1253,42 @@ void Node::printMNA(ofstream& outFile, int datum, int lastnode) {
 	if (print) {
 		conPtr = conList;
 		while (conPtr->next != NULL) {
-			conPtr->comp->print(nodeNum, outFile, datum, lastnode);
+			conPtr->comp->print(nodeNum, outFile, datum, lastnode,atf);
 			outFile << "+";
 			conPtr = conPtr->next;
 		}
-		conPtr->comp->print(nodeNum, outFile, datum, lastnode);
+		conPtr->comp->print(nodeNum, outFile, datum, lastnode,atf);
 		outFile << ';' << endl;
 	}
 	return;
 }
 
 void Node::printJac(ofstream& outFile, int datum, Node* wrt, int lastnode,
-	EquaType eqType) {
+	EquaType eqType,int atf) {
 	Connections* conPtr;
 	conPtr = conList;
+	//遍历节点的元器表，排除电压源
 	while (conPtr != NULL) {
 		if (conPtr->comp->getType() == VSource)
 			return;
 		conPtr = conPtr->next;
 	}
+	//输出未连接电压源节点
 	outFile << endl << "JAC(" << nameNum << ", " << wrt->getNameNum() << ") = ";
 	conPtr = conList;
 	while (conPtr->next != NULL) {
-		conPtr->comp->printJac(nodeNum, outFile, datum, wrt->getNameNum(), fal);
+		conPtr->comp->printJac(nodeNum, outFile, datum, wrt->getNameNum(), fal,atf);
 		outFile << "+";
 		conPtr = conPtr->next;
 	}
-	conPtr->comp->printJac(nodeNum, outFile, datum, wrt->getNameNum(), fal);
+	conPtr->comp->printJac(nodeNum, outFile, datum, wrt->getNameNum(), fal,atf);
 	outFile << ';' << endl;
+	//
 	if (eqType == Modified) {
 		conPtr = wrt->conList;
 		while (conPtr != NULL) {
 			if (conPtr->comp->getType() == VSource) {
-				outFile << endl << "JAC(" << nameNum << ", ";
-				outFile << lastnode + conPtr->comp->getcompNum() << ") = 0; ";
+				outFile << endl << "JAC(" << nameNum << ", " << lastnode + conPtr->comp->getcompNum() << ") = 0; ";
 				outFile << endl;
 			}
 			conPtr = conPtr->next;
@@ -1278,38 +1297,35 @@ void Node::printJac(ofstream& outFile, int datum, Node* wrt, int lastnode,
 	return;
 }
 
-void Node::printJacMNA(ofstream& outFile, int datum, Node* wrt, int lastnode) {
+void Node::printJacMNA(ofstream& outFile, int datum, Node* wrt, int lastnode,int atf) {
 	Connections* conPtr;
-	int print, val;
+	int print=0, val;
 	/* ~>*/
-	bool MNAflagFALSE = fal; //Used to indicate if it is been printed JacMNA
-	bool MNAflagTRUE = tru;
+	//bool MNAflagFALSE = fal; //Used to indicate if it is been printed JacMNA
+	//bool MNAflagTRUE = tru;
 	/* <~*/
-	print = 0;
 	conPtr = conList;
 	while (conPtr != NULL) {
 		if (conPtr->comp->getType() == VSource) {
 			print = 1;
 			val = conPtr->comp->getcompNum();
-			outFile << endl << "JAC(" << lastnode + val;
-			outFile << ", " << wrt->getNameNum() << ") = ";
+			outFile << endl << "JAC(" << lastnode + val << ", " << wrt->getNameNum() << ") = ";
 		}
 		conPtr = conPtr->next;
 	}
 	if (print) {
 		conPtr = conList;
 		while (conPtr->next != NULL) {
-			conPtr->comp->printJac(nodeNum, outFile, datum, wrt->getNameNum(), MNAflagTRUE);
+			conPtr->comp->printJac(nodeNum, outFile, datum, wrt->getNameNum(), tru,atf);
 			outFile << "+";
 			conPtr = conPtr->next;
 		}
-		conPtr->comp->printJac(nodeNum, outFile, datum, wrt->getNameNum(), MNAflagTRUE);
+		conPtr->comp->printJac(nodeNum, outFile, datum, wrt->getNameNum(), tru,atf);
 		outFile << ';' << endl;
 		conPtr = wrt->conList;
 		while (conPtr != NULL) {
 			if (conPtr->comp->getType() == VSource) {
-				outFile << endl << "JAC(" << lastnode + val << ", ";
-				outFile << lastnode + conPtr->comp->getcompNum() << ") = ";
+				outFile << endl << "JAC(" << lastnode + val << ", "<< lastnode + conPtr->comp->getcompNum() << ") = ";
 				if (conPtr->comp->getcompNum() == val)  outFile << "1;";
 				else outFile << "0;";
 				outFile << endl;
@@ -1320,20 +1336,20 @@ void Node::printJacMNA(ofstream& outFile, int datum, Node* wrt, int lastnode) {
 	return;
 }
 
-void Node::printSuperNodal(ofstream& outFile, int datum, int lastnode) {
+void Node::printSuperNodal(ofstream& outFile, int datum, int lastnode,int atf) {
 	Connections* conPtr;
 	conPtr = conList;
 	conPtr = conList;
 	while (conPtr->next != NULL) { //~> Using 'conPtr->next' not conPtr to check the end of the while loop
 		if (conPtr->comp->getType() != VSource) {
-			conPtr->comp->print(nodeNum, outFile, datum, lastnode);
+			conPtr->comp->print(nodeNum, outFile, datum, lastnode,atf);
 		}
 		conPtr = conPtr->next;
 
 	}
 	if (conPtr->comp->getType() != VSource) {
 		outFile << '+';
-		conPtr->comp->print(nodeNum, outFile, datum, lastnode);
+		conPtr->comp->print(nodeNum, outFile, datum, lastnode,atf);
 	}
 	return;
 }
@@ -1542,6 +1558,18 @@ Component* CompHead::getComp(int compNum) {
 	for (int a = 0; a < compNum; a++)
 		compPtr = compPtr->getNext();
 	return compPtr;
+}
+int CompHead::getCompCon(char a,int compNum,int con ) {
+	Component* compPtr;
+	compPtr = compList;
+	int otherCount = rCount + dCount + iSCount + vSCount + bCount+ mCount;
+	if (a == 'c')
+		otherCount += 0;
+	if (a == 'i')
+		otherCount += cCount;
+	for (int a = 0; a < otherCount+compNum; a++)
+		compPtr = compPtr->getNext();
+	return compPtr->getConVal(con);
 }
 
 Model::Model(char* nameIn, TranType typeIn, double isIn, double bfIn,

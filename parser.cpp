@@ -1,7 +1,7 @@
-#include "parser2.h"
+#include "parser3.h"
 
 int main(){
-    ifstream inFile("D:/case1.txt");
+    
     char buf[BufLength], buf1[BufLength], buf2[BufLength], buf3[BufLength], nameBuf[NameLength],
         * bufPtr, * charPtr1, * charPtr2;
     int intBuf1, intBuf2, intBuf3, intBuf4, eqNum = NA, specPrintJacMNA = 0;
@@ -14,16 +14,14 @@ int main(){
     Node* nodePtr, * nodePtr1, * nodePtr2;
     Model* modelPtr;
     TranType TtypeBuf;
-    
-
+    //读取网表文件，初始化componentList
+    ifstream inFile("D:/case1_tran.txt");
     if (!inFile.is_open()) {
         std::cout << "Failed to open file." << std::endl;
         return 1;
     }
-
     inFile.getline(buf, BufLength);
     inFile.getline(buf, BufLength);
-
     while (inFile.good()) {
         if ((buf == NULL) || (*buf == '\0')) {
             inFile.getline(buf, BufLength);
@@ -62,7 +60,6 @@ int main(){
             modelList.addModel(modelPtr);
         }
         if (isalpha(*buf)) {
-
             //  EDIT THIS SECTION IF NEW COMPONENTS ARE ADDED!!!
             //  we could do some rearranging in this section to catch each type in order.
             switch (*buf) {
@@ -142,6 +139,7 @@ int main(){
             case 'c':
             case 'C':
                 typeBuf = Capacitor;
+                char cNum;
                 strcpy(nameBuf, strtok(buf, " "));
                 intBuf1 = atoi(strtok(NULL, " "));
                 intBuf2 = atoi(strtok(NULL, " "));
@@ -164,7 +162,7 @@ int main(){
         inFile.getline(buf, BufLength);
     }
     inFile.close();
-
+    //初始化nodelist
     compPtr1 = compList.getComp(0);
     while (compPtr1 != NULL) {
         for (int b = 0; b < 3; b++) {
@@ -192,24 +190,22 @@ int main(){
         }
         compPtr1 = compPtr1->getNext();
     }
-
-    // Loop to find lastnode
+    //获取最后一个node名
     nodePtr = nodeList.getNode(0); //~> getting the pointer to the first node, pointed by 'headNode'
     int lastnode = nodePtr->getNameNum();
     while (nodePtr != NULL) {
         lastnode = (nodePtr->getNameNum() > lastnode) ? nodePtr->getNameNum() : lastnode;
         nodePtr = nodePtr->getNext();
     }
-
-    //~> Checking the component list
-//~> Comment this part to omit
+    //终端打印componentList，nodeList
     compPtr = compList.getComp(0);
     printComponents(compPtr);
     nodePtr = nodeList.getNode(0);
     printNodes(nodePtr, 1);
     cout << endl;
-    // output circuit information
-    ofstream outFile("D:/case1out.txt");
+
+    //向文件写出数据
+    ofstream outFile("D:/case1_tranout.txt");
     if (!outFile.is_open()) {
         // 向文件中写入数据
         cout << "Error opening file!" << endl;
@@ -224,68 +220,65 @@ int main(){
         outFile << "MODIFIED NODAL" << endl;
     outFile << "%Datum Node:        " << datum << endl;
 
-    // create value table
-    outFile << endl
-        << "%****************************************************************" << endl;
+    //输出元件值
+    outFile << endl << "%****************************************************************" << endl;
     outFile << "%                      Component Values:" << endl;
     compPtr = compList.getComp(0);
     while (compPtr != NULL) {
         compPtr->printVal(outFile);
         compPtr = compPtr->getNext();
     }
-    outFile << endl
-        << "%****************************************************************" << endl;
 
-    // go down the nodal list and have components announce themselves
+    outFile << endl << "%****************************************************************" << endl;
     outFile << endl << "%                      Circuit Equations: " << endl;
+    //输出普通节点方程
     nodePtr = nodeList.getNode(0);
     while (nodePtr != NULL) {
         if (nodePtr->getNameNum() != datum) {
-            nodePtr->printNodal(outFile, datum, lastnode);
+            nodePtr->printNodal(outFile, datum, lastnode,0);
         }
         nodePtr = nodePtr->getNext();
     }
-    //go down the component list and give equations for all sources
+    //输出电压源节点方程
     compPtr = compList.getComp(0);
     while (compPtr != NULL) {
         compPtr->specialPrint(outFile, datum);
         compPtr = compPtr->getNext();
     }
-    //~> go down the component list and give supernode equations for all float sources (Nodal Analysis)
+    //普通节点法补偿方程
     if (eqType != Modified) {
         compPtr = compList.getComp(0);
         while (compPtr != NULL) {
-            compPtr->printSuperNode(outFile, datum, lastnode);
+            compPtr->printSuperNode(outFile, datum, lastnode,0);
             compPtr = compPtr->getNext();
         }
     }
-    // go down the node list and give additional MNA equations
+    //改进节点法补偿方程
     if (eqType == Modified) {
         nodePtr = nodeList.getNode(0);
         while (nodePtr != NULL) {
             if (nodePtr->getNameNum() != datum)
-                nodePtr->printMNA(outFile, datum, lastnode);
+                nodePtr->printMNA(outFile, datum, lastnode,0);
             nodePtr = nodePtr->getNext();
         }
     }
 
-    outFile << endl
-        << "%********************************************************************" << endl;
+    outFile << endl << "%********************************************************************" << endl;
     outFile << endl << "%                      Jacobians: " << endl;
+    //输出普通节点jac方程
     nodePtr1 = nodeList.getNode(0);
     while (nodePtr1 != NULL) {   //~> this loop handles the nodes not connected to a Vsource and those ones that are not the 'datum' node
         if (nodePtr1->getNameNum() != datum) {
             nodePtr2 = nodeList.getNode(0);
             while (nodePtr2 != NULL) {
-                if (nodePtr2->getNameNum() != datum) {
-                    nodePtr1->printJac(outFile, datum, nodePtr2, lastnode, eqType);
-                }
+                if (nodePtr2->getNameNum() != datum)
+                    nodePtr1->printJac(outFile, datum, nodePtr2, lastnode, eqType,0);
                 nodePtr2 = nodePtr2->getNext();
             }
         }
         nodePtr1 = nodePtr1->getNext();
     }
-    // go down the component list and give equations for all sources
+    //输出电压源jac方程
     compPtr = compList.getComp(0);
     while (compPtr != NULL) {
         nodePtr2 = nodeList.getNode(0);
@@ -299,7 +292,7 @@ int main(){
         specPrintJacMNA = 0;
         compPtr = compPtr->getNext();
     }
-    // print the Jacobians for the additional MNA equations
+    //输出改进节点法补偿jac方程
     if (eqType == Modified) {
         nodePtr1 = nodeList.getNode(0);
         while (nodePtr1 != NULL) {
@@ -307,7 +300,86 @@ int main(){
                 nodePtr2 = nodeList.getNode(0);
                 while (nodePtr2 != NULL) {
                     if (nodePtr2->getNameNum() != datum)
-                        nodePtr1->printJacMNA(outFile, datum, nodePtr2, lastnode);
+                        nodePtr1->printJacMNA(outFile, datum, nodePtr2, lastnode,0);
+                    nodePtr2 = nodePtr2->getNext();
+                }
+            }
+            nodePtr1 = nodePtr1->getNext();
+        }
+    }
+
+    outFile << endl << "%****************************************************************" << endl;
+    outFile << endl << "%                     Tran Circuit Equations: " << endl;
+    //输出普通节点方程
+    nodePtr = nodeList.getNode(0);
+    while (nodePtr != NULL) {
+        if (nodePtr->getNameNum() != datum) {
+            nodePtr->printNodal(outFile, datum, lastnode,1);
+        }
+        nodePtr = nodePtr->getNext();
+    }
+    //输出电压源节点方程
+    compPtr = compList.getComp(0);
+    while (compPtr != NULL) {
+        compPtr->specialPrint(outFile, datum);
+        compPtr = compPtr->getNext();
+    }
+    //普通节点法补偿方程
+    if (eqType != Modified) {
+        compPtr = compList.getComp(0);
+        while (compPtr != NULL) {
+            compPtr->printSuperNode(outFile, datum, lastnode,1);
+            compPtr = compPtr->getNext();
+        }
+    }
+    //改进节点法补偿方程
+    if (eqType == Modified) {
+        nodePtr = nodeList.getNode(0);
+        while (nodePtr != NULL) {
+            if (nodePtr->getNameNum() != datum)
+                nodePtr->printMNA(outFile, datum, lastnode,1);
+            nodePtr = nodePtr->getNext();
+        }
+    }
+
+    outFile << endl << "%********************************************************************" << endl;
+    outFile << endl << "%                     Tran Jacobians: " << endl;
+    //输出普通节点jac方程
+    nodePtr1 = nodeList.getNode(0);
+    while (nodePtr1 != NULL) {   //~> this loop handles the nodes not connected to a Vsource and those ones that are not the 'datum' node
+        if (nodePtr1->getNameNum() != datum) {
+            nodePtr2 = nodeList.getNode(0);
+            while (nodePtr2 != NULL) {
+                if (nodePtr2->getNameNum() != datum)
+                    nodePtr1->printJac(outFile, datum, nodePtr2, lastnode, eqType,1);
+                nodePtr2 = nodePtr2->getNext();
+            }
+        }
+        nodePtr1 = nodePtr1->getNext();
+    }
+    //输出电压源jac方程
+    compPtr = compList.getComp(0);
+    while (compPtr != NULL) {
+        nodePtr2 = nodeList.getNode(0);
+        compPtr2 = compList.getComp(0);
+        while (nodePtr2 != NULL) {
+            if (nodePtr2->getNameNum() != datum) {
+                compPtr->specialPrintJac(outFile, datum, nodePtr2/**/, lastnode, eqType, compPtr2, &specPrintJacMNA /**/); // ~> specPrintJacMNA is used to verify if the jacobians w.r.t. the Modified equations was already printed to print only once.
+            }
+            nodePtr2 = nodePtr2->getNext();
+        }
+        specPrintJacMNA = 0;
+        compPtr = compPtr->getNext();
+    }
+    //输出改进节点法补偿jac方程
+    if (eqType == Modified) {
+        nodePtr1 = nodeList.getNode(0);
+        while (nodePtr1 != NULL) {
+            if (nodePtr1->getNameNum() != datum) {
+                nodePtr2 = nodeList.getNode(0);
+                while (nodePtr2 != NULL) {
+                    if (nodePtr2->getNameNum() != datum)
+                        nodePtr1->printJacMNA(outFile, datum, nodePtr2, lastnode,1);
                     nodePtr2 = nodePtr2->getNext();
                 }
             }
@@ -316,19 +388,17 @@ int main(){
     }
     outFile.close();
 
-
-    ifstream inFile1("D:/case1out.txt");
+    ifstream inFile1("D:/case1_tranout.txt");
     string line;
     if (!inFile1) {
         cerr << "Failed to open file " << endl;
         return 1;
     }
-    // 存储变量名及其值
     map<string, string> variables; 
     while (getline(inFile1, line)) {
         if (line.find("Circuit Equations:") != string::npos)
             break;
-        // 去除变量名和值字符串中的空格与分号
+        // 去除字符串中的空格与分号
         line.erase(remove_if(line.begin(), line.end(), isSpaceOrSemicolon), line.end());
         size_t delimiterPos = line.find("=");
         if (delimiterPos != string::npos) {
@@ -341,7 +411,7 @@ int main(){
                 variables[variableName] = valueStr;
         }
     }
-    map<string, string> equations;
+    map<string, string> eqt_dc;
     while (getline(inFile1, line)) {
         if (line.find("Jacobians:") != string::npos)
             break;
@@ -357,16 +427,51 @@ int main(){
                     pos += i.second.length();
                 }
             }
-            size_t pos1 = 0;
-            while ((pos1 = equationStr.find("exp", pos1)) != string::npos) {
-                equationStr.replace(pos1, 3, "exp_");
-                pos1 += 4;
-            }
-            equations[equationName] = equationStr;
+            eqt_dc[equationName] = equationStr;
 
         }
     }
-    map<string, string> jacobians;
+    map<string, string> jac_dc;
+    while (getline(inFile1, line)) {
+        if (line.find("Tran Circuit Equations:") != string::npos)
+            break;
+        line.erase(remove_if(line.begin(), line.end(), isSpaceOrSemicolon), line.end());
+        size_t delimiterPos = line.find("=");
+        if (delimiterPos != string::npos) {
+            string elementName = line.substr(0, delimiterPos);
+            string elementStr = line.substr(delimiterPos + 1);
+            for (auto& i : variables) {
+                size_t pos = 0;
+                while ((pos = elementStr.find(i.first, pos)) != string::npos) {
+                    elementStr.replace(pos, i.first.length(), i.second);
+                    pos += i.second.length();
+                }
+            }
+            jac_dc[elementName] = elementStr;
+        }
+    }
+    map<string, string> eqt_tran;
+    while (getline(inFile1, line)) {
+        if (line.find("Tran Jacobians:") != string::npos)
+            break;
+        line.erase(remove_if(line.begin(), line.end(), isSpaceOrSemicolon), line.end());
+        size_t delimiterPos = line.find("=");
+        if (delimiterPos != string::npos) {
+            string equationName = line.substr(0, delimiterPos);
+            string equationStr = line.substr(delimiterPos + 1);
+            for (auto& i : variables) {
+                size_t pos = 0;
+                while ((pos = equationStr.find(i.first, pos)) != string::npos) {
+                    equationStr.replace(pos, i.first.length(), i.second);
+                    pos += i.second.length();
+                }
+            }
+
+            eqt_tran[equationName] = equationStr;
+
+        }
+    }
+    map<string, string> jac_tran;
     while (getline(inFile1, line)) {
         line.erase(remove_if(line.begin(), line.end(), isSpaceOrSemicolon), line.end());
         size_t delimiterPos = line.find("=");
@@ -380,25 +485,17 @@ int main(){
                     pos += i.second.length();
                 }
             }
-            size_t pos1 = 0;
-            while ((pos1 = elementStr.find("exp", pos1)) != string::npos) {
-                elementStr.replace(pos1, 3, "exp_");
-                pos1 += 4;
-            }
-            jacobians[elementName] = elementStr;
+            jac_tran[elementName] = elementStr;
         }
     }
     inFile1.close();
 
     VectorXd init(8);
-    init << 0, 0, 0, 0, 0, 0, 0, 0;//nr不行homo可以
+    init << 1.7, 0.6, 7, 1.3, 1.4, 10, 0, 0;//nr不行homo可以
     //init << 100, 100, 100, 100, 100, 100, 100, 100;//nr不行homo可以
     //init << 0.7 ,0.6 ,10 ,0.7 ,1.5 ,10, 0, 0;//nr和homo都可以
-    //VectorXd solution1 = NRIteration(init, equations, jacobians, 1e-3, 100);
-    VectorXd solution2 = HMIteration(init, equations, jacobians, 1e-3, 0.01);
-    //cout << "Solution N-R:" << endl << solution1 << endl;
-    cout << "Solution Homotopy:" << endl << solution2 << endl;
-    //cout << "Solution TranCc4:" << endl;
-    //TranCc4(0.001, 0.04);
+    //NRIteration(eqt_dc, jac_dc, init, 1e-3, 100);
+    //HMIteration(eqt_dc, jac_dc, init, 1e-3, 0.01);
+    tranAnalysis(eqt_dc, jac_dc, init, eqt_tran, jac_tran, compList, datum,0.01, 0.4);
     return 0;
 }
